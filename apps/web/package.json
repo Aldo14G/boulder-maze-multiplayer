@@ -1,0 +1,23 @@
+{
+  "name": "@boulder-maze/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@boulder-maze/core": "*",
+    "phaser": "3.90.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.6"
+  }
+}
