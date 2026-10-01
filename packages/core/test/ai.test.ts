@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { stepGame, tileIndex } from '../src/index.js';
+import { isWalkable, posToTile, stepGame, tileIndex } from '../src/index.js';
 import {
   clearPellets,
   makeState,
   placeBoulder,
+  placeBoulderAt,
   placePlayer,
   player,
   resetSeq,
@@ -53,5 +54,27 @@ describe('boulder AI', () => {
       return JSON.stringify(state.boulders);
     };
     expect(run()).toBe(run());
+  });
+
+  it('re-aligns and keeps deciding after drifting off tile centers', () => {
+    // Regression: powered speed changes mid-edge can leave a boulder off
+    // center alignment. Decisions must fire at *crossed* centers, or the
+    // boulder slides in a straight line through walls forever.
+    resetSeq();
+    const state = makeState();
+    startPlaying(state);
+    clearPellets(state, [[1, 'normal']]);
+    placePlayer(state, { x: 6, y: 7 }, null);
+    // x=96 is between centers (90 and 150) on the y=4 corridor
+    placeBoulderAt(state, 'boulder-1', { x: 96, y: 270 }, 'right');
+    const b = state.boulders['boulder-1']!;
+    for (let i = 0; i < 300; i++) {
+      stepGame(state, []);
+      const t = posToTile(b.pos, state.config);
+      expect(
+        t.x >= 0 && t.x < miniMap.width && t.y >= 0 && t.y < miniMap.height,
+      ).toBe(true);
+      expect(isWalkable(miniMap, t)).toBe(true);
+    }
   });
 });

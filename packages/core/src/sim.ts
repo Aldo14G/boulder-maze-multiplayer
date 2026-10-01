@@ -240,10 +240,13 @@ export function stepGame(state: GameState, commands: readonly PlayerCommand[]): 
   const playerTile = primaryPlayerTile(state);
   const distField = bfsDistances(state.map, playerTile);
   const powered = Object.values(state.players).some((p) => p.powerTicks > 0);
-  for (const id of sortedPlayerIds(state)) movePlayer(state, state.players[id]!);
+  const bends = new Map<string, Vec | null>();
+  for (const id of sortedPlayerIds(state)) {
+    bends.set(id, movePlayer(state, state.players[id]!));
+  }
   for (const id of sortedBoulderIds(state)) {
     const boulder = state.boulders[id]!;
-    if (boulder.status === 'active') moveBoulder(state, boulder, distField, powered);
+    if (boulder.status === 'active') bends.set(id, moveBoulder(state, boulder, distField, powered));
   }
 
   // 4. pickups (Super Pellet activates before contact resolution)
@@ -276,7 +279,15 @@ export function stepGame(state: GameState, commands: readonly PlayerCommand[]): 
       const boulder = state.boulders[bid]!;
       if (boulder.status !== 'active') continue;
       const b0 = prevPos.get(bid)!;
-      if (segSegDistance(p0, player.pos, b0, boulder.pos) > cfg.contactRadius) continue;
+      const d = pathMinDistance(
+        p0,
+        player.pos,
+        bends.get(pid) ?? null,
+        b0,
+        boulder.pos,
+        bends.get(bid) ?? null,
+      );
+      if (d > cfg.contactRadius) continue;
       if (player.powerTicks > 0) {
         boulder.status = 'destroyed';
         boulder.dir = null;
@@ -372,7 +383,63 @@ function nextTile(tile: TilePos, dir: Direction): TilePos {
   return { x: tile.x + v.x, y: tile.y + v.y };
 }
 
-function movePlayer(state: GameState, player: PlayerState): void {
+interface MoveResult {
+  pos: Vec;
+  dir: Direction | null;
+  /**
+   * The tile center where the entity turned mid-tick, if it did. The tick's
+   * path is then the polyline prev → bend → pos; null means a straight path.
+   */
+  bend: Vec | null;
+}
+
+/** Units from `axis` to the next tile center in `sign`'s direction, in (0, T]. */
+function distToCenter(axis: number, sign: 1 | -1, T: number): number {
+  const rel = (((axis - T / 2) % T) + T) % T; // units past the previous center
+  const d = sign === 1 ? (T - rel) % T : rel;
+  return d === 0 ? T : d;
+}
+
+/**
+ * Move an entity up to `speed` units. Direction decisions are made at every
+ * tile center the entity *crosses*, not only when it lands exactly on one —
+ * so an entity knocked off center alignment (e.g. a mid-edge speed change
+ * when drill power starts or ends) re-aligns at the next center instead of
+ * sliding straight through walls forever. `decide` runs at each center and
+ * returns the direction to take (null = stop). Speeds are always < T, so at
+ * most two decisions can happen in a tick and a single `bend` is enough.
+ */
+function advanceAlongMaze(
+  pos: Vec,
+  dir: Direction | null,
+  speed: number,
+  cfg: GameConfig,
+  decide: (tile: TilePos, dir: Direction | null) => Direction | null,
+): MoveResult {
+  const p = { ...pos };
+  let d = dir;
+  let bend: Vec | null = null;
+  let budget = speed;
+  while (budget > 0) {
+    if (atTileCenter(p, cfg)) {
+      const next = decide(posToTile(p, cfg), d);
+      if (next !== d && bend === null && (p.x !== pos.x || p.y !== pos.y)) bend = { ...p };
+      d = next;
+      if (!d) break;
+    }
+    if (!d) break; // stopped entities only ever rest at centers
+    const v = DIR_VECTORS[d];
+    const axis = v.x !== 0 ? p.x : p.y;
+    const sign = (v.x !== 0 ? v.x : v.y) as 1 | -1;
+    const step = Math.min(budget, distToCenter(axis, sign, cfg.unitsPerTile));
+    p.x += v.x * step;
+    p.y += v.y * step;
+    budget -= step;
+  }
+  return { pos: p, dir: d, bend };
+}
+
+function movePlayer(state: GameState, player: PlayerState): Vec | null {
   const cfg = state.config;
   const map = state.map;
 
@@ -382,22 +449,18 @@ function movePlayer(state: GameState, player: PlayerState): void {
     player.bufferedDir = null;
   }
 
-  if (atTileCenter(player.pos, cfg)) {
-    const tile = posToTile(player.pos, cfg);
+  const result = advanceAlongMaze(player.pos, player.dir, cfg.playerSpeed, cfg, (tile, cur) => {
     if (player.bufferedDir && isWalkable(map, nextTile(tile, player.bufferedDir))) {
-      player.dir = player.bufferedDir;
+      const chosen = player.bufferedDir;
       player.bufferedDir = null;
-    } else if (player.dir && isWalkable(map, nextTile(tile, player.dir))) {
-      // continue straight
-    } else {
-      player.dir = null;
+      return chosen;
     }
-  }
-
-  if (player.dir) {
-    const v = DIR_VECTORS[player.dir];
-    player.pos = { x: player.pos.x + v.x * cfg.playerSpeed, y: player.pos.y + v.y * cfg.playerSpeed };
-  }
+    if (cur && isWalkable(map, nextTile(tile, cur))) return cur;
+    return null;
+  });
+  player.pos = result.pos;
+  player.dir = result.dir;
+  return result.bend;
 }
 
 /** Chase: pick the legal neighbour with the smallest BFS distance to the player. */
@@ -406,16 +469,16 @@ function moveBoulder(
   boulder: BoulderState,
   distField: ReadonlyMap<number, number>,
   powered: boolean,
-): void {
+): Vec | null {
   const cfg = state.config;
   const map = state.map;
 
-  if (boulder.dir === null || atTileCenter(boulder.pos, cfg)) {
-    const tile = posToTile(boulder.pos, cfg);
+  const speed = powered ? cfg.poweredBoulderSpeed : cfg.boulderSpeed;
+  const result = advanceAlongMaze(boulder.pos, boulder.dir, speed, cfg, (tile, cur) => {
     let options = DIRECTIONS.filter((d) => isWalkable(map, nextTile(tile, d)));
     // never reverse while chasing; while fleeing, all legal routes count
     if (!powered) {
-      const forward = options.filter((d) => !boulder.dir || d !== OPPOSITE[boulder.dir]);
+      const forward = options.filter((d) => !cur || d !== OPPOSITE[cur]);
       if (forward.length > 0) options = forward;
     }
 
@@ -427,14 +490,11 @@ function moveBoulder(
       if (da !== db) return powered ? db - da : da - db;
       return orderIndex(a, rotation) - orderIndex(b, rotation);
     });
-    boulder.dir = ranked[0] ?? null;
-  }
-
-  if (boulder.dir) {
-    const speed = powered ? cfg.poweredBoulderSpeed : cfg.boulderSpeed;
-    const v = DIR_VECTORS[boulder.dir];
-    boulder.pos = { x: boulder.pos.x + v.x * speed, y: boulder.pos.y + v.y * speed };
-  }
+    return ranked[0] ?? null;
+  });
+  boulder.pos = result.pos;
+  boulder.dir = result.dir;
+  return result.bend;
 }
 
 function orderIndex(dir: Direction, rotation: number): number {
@@ -524,6 +584,27 @@ function bfsDistances(map: MazeMap, start: TilePos): Map<number, number> {
     }
   }
   return dist;
+}
+
+/**
+ * Minimum distance between two entities' tick paths. Each path is one
+ * segment, or two when the entity turned at a crossed center (`bend`).
+ */
+function pathMinDistance(
+  a0: Vec,
+  a1: Vec,
+  aBend: Vec | null,
+  b0: Vec,
+  b1: Vec,
+  bBend: Vec | null,
+): number {
+  const segsA: [Vec, Vec][] = aBend ? [[a0, aBend], [aBend, a1]] : [[a0, a1]];
+  const segsB: [Vec, Vec][] = bBend ? [[b0, bBend], [bBend, b1]] : [[b0, b1]];
+  let min = Number.POSITIVE_INFINITY;
+  for (const [s0, s1] of segsA) {
+    for (const [t0, t1] of segsB) min = Math.min(min, segSegDistance(s0, s1, t0, t1));
+  }
+  return min;
 }
 
 // segment-segment distance (squared then sqrt once); 0 when segments cross

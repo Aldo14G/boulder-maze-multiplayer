@@ -54,7 +54,8 @@ export class LocalGameSession implements GameSession {
   private inputSeq = 0;
   private desiredDir: Direction | null = null;
   private eventBacklog: GameEvent[] = [];
-  private _paused = false;
+  // Frozen until the first Start so the run cannot play out under the title overlay.
+  private _paused = true;
 
   constructor(
     private readonly config: GameConfig = DEFAULT_CONFIG,
