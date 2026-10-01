@@ -1,0 +1,24 @@
+{
+  "name": "boulder-maze",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Boulder Maze — single-player baseline for the Devin multiplayer workshop",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @boulder-maze/web",
+    "build": "npm run build --workspace @boulder-maze/core && npm run build --workspace @boulder-maze/web",
+    "preview": "npm run preview --workspace @boulder-maze/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "vitest run --root packages/core",
+    "validate": "npm run build --workspace @boulder-maze/core --silent && node scripts/validate-map.mjs",
+    "smoke": "npm run build --workspace @boulder-maze/core --silent && node scripts/headless-smoke.mjs",
+    "test:e2e": "npm run test:e2e --workspace @boulder-maze/web"
+  }
+}

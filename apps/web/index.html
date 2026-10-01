@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Boulder Maze</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div id="game-container" aria-label="Boulder Maze game board"></div>
+
+      <div id="hud-top" hidden>
+        <span class="hud-brand">BOULDER MAZE</span>
+        <span id="hud-score" class="hud-stat">Score 0</span>
+        <span id="hud-pellets" class="hud-stat">Pellets 0</span>
+        <span id="hud-drill" class="hud-drill" hidden>
+          <span class="hud-drill-label">DRILL</span>
+          <span class="hud-drill-track"><span id="hud-drill-fill"></span></span>
+        </span>
+        <button id="btn-pause" type="button" class="hud-btn">Pause</button>
+      </div>
+
+      <div id="ready-text" hidden></div>
+
+      <div id="overlay">
+        <div id="overlay-card">
+          <h1 id="overlay-title">Boulder Maze</h1>
+          <p id="overlay-body">
+            Clear every pellet while dodging the boulders. Super Pellets turn
+            your triangle into a boulder-breaking drill for 8 seconds.
+          </p>
+          <ul id="overlay-controls" class="controls">
+            <li><kbd>↑←↓→</kbd> or <kbd>WASD</kbd> — steer</li>
+            <li><kbd>P</kbd> / <kbd>Esc</kbd> — pause</li>
+          </ul>
+          <div id="overlay-actions">
+            <button id="btn-primary" type="button" class="hud-btn primary">Start</button>
+            <button id="btn-secondary" type="button" class="hud-btn" hidden>Restart</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
