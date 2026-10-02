@@ -105,7 +105,6 @@ export class Room {
         }
         seat.name = msg.name;
         this.send(playerId, { t: 'welcome', playerId, roomId: this.roomId, protocol: PROTOCOL_VERSION });
-        if (this.state) this.send(playerId, { t: 'snapshot', state: snapshotState(this.state) });
         this.broadcastLobby();
         return;
       }

@@ -48,6 +48,9 @@ once; it is slow — run it for UI/session slices, not for core-only changes.
 - One vertical slice per branch/PR, in plan order; each slice ships a test.
 - TDD for core changes: failing Vitest first, then the minimal change.
 - Add a dependency only if the plan lists it (`ws`, `fast-check`). No Colyseus.
+- Netcode lives in `apps/web/src/session/netcode.ts` as pure functions (Vitest in
+  `apps/web/test/`); `RemoteGameSession` only orchestrates sockets and timing.
+- Online demo keys: `N` toggles prediction; `window.__NET__()` returns live stats.
 - Keep diffs surgical; do not reformat untouched files; do not add comments
   that restate code.
 - Document decisions in `docs/MULTIPLAYER_PLAN.md` (Decisions section), not

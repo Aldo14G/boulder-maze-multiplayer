@@ -45,6 +45,12 @@ if (online) {
   hud.showOverlay('lobby');
   hud.setLobby([], null, `Connecting to ${serverUrl}…`);
   hud.setPauseAvailable(false);
+  remote.setPrediction(params.get('predict') !== '0');
+  // Demo toggle: N flips client-side prediction so the difference is visible live.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'n' || e.key === 'N') remote.setPrediction(!remote.prediction);
+  });
+  (window as unknown as { __NET__?: () => unknown }).__NET__ = () => remote.stats;
 } else {
   const local = new LocalGameSession();
   session = local;
