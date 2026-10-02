@@ -92,7 +92,10 @@ export class Room {
       seat.connected = false;
       seat.ready = false;
       this.emitEvents(forfeitPlayer(this.state, playerId));
-      if (this.state.phase === 'lost') this.broadcastSnapshot();
+      if (this.state.phase === 'lost') {
+        this.broadcastSnapshot();
+        this.endMatch();
+      }
       this.broadcastLobby();
       return;
     }
@@ -164,8 +167,16 @@ export class Room {
     if (terminal || state.tick % this.keyframeEvery === 0) this.broadcastSnapshot();
     else if (state.tick % this.snapshotEvery === 0) this.broadcastDelta();
     if (terminal) {
-      for (const seat of this.seats.values()) seat.ready = false;
+      this.endMatch();
       this.broadcastLobby();
+    }
+  }
+
+  /** Back to lobby rules: everyone must opt in again; seats that left mid-match are freed. */
+  private endMatch(): void {
+    for (const [id, seat] of this.seats) {
+      if (!seat.connected) this.seats.delete(id);
+      else seat.ready = false;
     }
   }
 

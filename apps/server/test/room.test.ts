@@ -129,7 +129,8 @@ describe('Room', () => {
     const b = join('bob');
     expect(sent(b, 'snapshot')).toHaveLength(0);
     expect(sent(b, 'start')).toHaveLength(0);
-    expect(sent(b, 'lobby').length).toBeGreaterThan(0);
+    const lobby = sent(b, 'lobby').at(-1) as { players: Array<{ id: string }> };
+    expect(lobby.players.map((p) => p.id)).toEqual([b]); // the leaver's seat was freed
   });
 
   it('restart is authority-owned: all players ready again => fresh match with a new seed', () => {
