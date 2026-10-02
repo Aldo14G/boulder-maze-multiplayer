@@ -6,10 +6,13 @@ import type { MazeMap } from './map.js';
  *
  * Chute entries (west side: rows 10 and 17; east side: rows 3 and 10) feed
  * directly into the boundary corridors; every entry tile has degree >= 3.
+ *
+ * v2: four player spawns on the bottom row (x = 6, 10, 14, 18) so up to
+ * MAX_PLAYERS start on distinct tiles, all far from the chute entries.
  */
 export const BOULDER_MAZE_MAP: MazeMap = {
   id: 'boulder-maze',
-  version: 1,
+  version: 2,
   width: 25,
   height: 21,
   rows: [
@@ -32,7 +35,7 @@ export const BOULDER_MAZE_MAP: MazeMap = {
     '#.##.#######.#######.##.#',
     '#e...........#######.##.#',
     '#.##.#######.#######.##.#',
-    '#o..........P..........o#',
+    '#o....P...P...P...P....o#',
     '#########################',
   ],
   chutes: [

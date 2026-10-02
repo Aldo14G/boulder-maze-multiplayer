@@ -4,6 +4,7 @@ import {
   BOULDER_MAZE_MAP,
   createGame,
   isWalkable,
+  MAX_PLAYERS,
   validateMap,
   walkableNeighbors,
 } from '../src/index.js';
@@ -47,7 +48,7 @@ describe('shipped map', () => {
       expect(walkableNeighbors(BOULDER_MAZE_MAP, chute.entry).length).toBeGreaterThanOrEqual(2);
       expect(chute.entry.x === 1 || chute.entry.x === BOULDER_MAZE_MAP.width - 2).toBe(true);
     }
-    expect(BOULDER_MAZE_MAP.version).toBe(1);
+    expect(BOULDER_MAZE_MAP.version).toBe(2);
     expect(BOULDER_MAZE_MAP.id).toBe('boulder-maze');
   });
 
@@ -114,8 +115,8 @@ describe('createGame', () => {
     const state = createGame();
     expect(state.phase).toBe('ready');
     const walkable = allWalkableTiles(BOULDER_MAZE_MAP).length;
-    // pellets excluded only on the player spawn and the four chute entries
-    expect(state.pelletsRemaining).toBe(walkable - 1 - 4);
+    // pellets excluded only on the player spawns and the four chute entries
+    expect(state.pelletsRemaining).toBe(walkable - MAX_PLAYERS - 4);
     expect(Object.keys(state.players)).toEqual(['player-1']);
     expect(Object.keys(state.boulders)).toHaveLength(4);
     expect(Object.values(state.boulders).every((b) => b.status === 'pending')).toBe(true);

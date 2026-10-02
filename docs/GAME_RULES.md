@@ -81,9 +81,11 @@ not consume power duration.
 5. **Contacts** — swept segment-vs-segment distance ≤
    `contactRadius = 24` catches mid-tick crossings (head-on passes count).
    Powered contact destroys the boulder (+200); unpowered contact
-   defeats the player (`playerDefeated`, `phase = 'lost'`).
-6. **Win check** — `pelletsRemaining === 0` → `gameWon`. A fatal contact on
-   the same tick takes precedence over the final pellet.
+   defeats that player (`playerDefeated`, `alive = false`). When no player
+   is left alive, `phase = 'lost'`.
+6. **Win check** — `pelletsRemaining === 0` → `gameWon`, credited to the
+   player who took the last pellet. A team wipe on the same tick takes
+   precedence over the final pellet.
 7. Timers — power countdown, respawn countdown, chute warnings/releases.
 
 ## Boulder lifecycle
@@ -100,8 +102,14 @@ not consume power duration.
 
 ## Lives, pause, restart
 
-- One player, four boulders, **one life** — any unpowered contact ends the
-  run (`lost`); terminal phases freeze the sim (`stepGame` is a no-op).
+- 1–4 players (`createGame(..., playerIds)`), four boulders, **one life
+  each** — a defeated player spectates (no movement, pickups, contacts or
+  commands; boulders ignore them) and the run is `lost` only when every
+  player is defeated; terminal phases freeze the sim (`stepGame` is a no-op).
+- Boulders chase the **nearest alive player** (multi-source BFS) and flee
+  while any alive player is powered.
+- Spawns (map v2 has four on the bottom row) are handed out safest-first:
+  farthest from any chute entry, so a lone player always gets the safest seat.
 - Pause is a **session** concept (not a game rule): the local session stops
   advancing ticks, freezing all timers. Multiplayer must decide its own
   pause authority.

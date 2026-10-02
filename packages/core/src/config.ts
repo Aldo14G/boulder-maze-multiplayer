@@ -3,6 +3,9 @@
  * sub-tile units per tick: with unitsPerTile = 60 and tickRate = 60 Hz,
  * playerSpeed = 5 means exactly 5 tiles/second.
  */
+/** Upper bound on simultaneous players a map must be able to seat. */
+export const MAX_PLAYERS = 4;
+
 export interface GameConfig {
   /** Fixed simulation rate. */
   readonly tickRate: number;

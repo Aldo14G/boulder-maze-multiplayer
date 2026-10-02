@@ -12,6 +12,7 @@ import {
   WALL,
 } from './map.js';
 import type { MazeMap } from './map.js';
+import { MAX_PLAYERS } from './config.js';
 import type { TilePos } from './types.js';
 import { DIR_VECTORS } from './types.js';
 
@@ -42,7 +43,7 @@ const fmt = (t: TilePos) => `(${t.x},${t.y})`;
  *  - all walkable tiles form one connected component
  *  - no fully walkable 2x2 block (objective corridor-width check)
  *  - at least `minJunctions` tiles of degree 3 or 4
- *  - exactly one player spawn, on a walkable tile
+ *  - between 1 and MAX_PLAYERS player spawns, on walkable tiles
  *  - every chute entry is walkable with degree >= 2, and its inward
  *    direction points into a walkable tile
  */
@@ -128,8 +129,8 @@ export function validateMap(map: MazeMap, minJunctions = 6): MapValidationResult
 
   // ---- player spawn ---------------------------------------------------------
   const spawns = playerSpawns(map);
-  if (spawns.length !== 1) {
-    issues.push(issue('player-spawn', `expected exactly 1 player spawn ('P'), found ${spawns.length}`, spawns));
+  if (spawns.length < 1 || spawns.length > MAX_PLAYERS) {
+    issues.push(issue('player-spawn', `expected 1..${MAX_PLAYERS} player spawns ('P'), found ${spawns.length}`, spawns));
   }
 
   // ---- chutes ----------------------------------------------------------------
