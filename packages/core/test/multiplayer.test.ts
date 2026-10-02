@@ -3,6 +3,7 @@ import {
   BOULDER_MAZE_MAP,
   createGame,
   DEFAULT_CONFIG,
+  forfeitPlayer,
   MAX_PLAYERS,
   playerSpawns,
   posToTile,
@@ -110,6 +111,22 @@ describe('multiplayer core', () => {
     const events = stepGame(state, []);
     expect(state.phase).toBe('won');
     expect(events.find((e) => e.type === 'gameWon')).toMatchObject({ playerId: 'p-b' });
+  });
+
+  it('forfeiting removes a player from play and can end the run', () => {
+    resetSeq();
+    const state = multi();
+    clearPellets(state, [[1, 'normal']]);
+    let events = forfeitPlayer(state, 'p-a');
+    expect(events).toEqual([expect.objectContaining({ type: 'playerForfeited', playerId: 'p-a' })]);
+    expect(state.players['p-a']!.alive).toBe(false);
+    expect(state.phase).toBe('playing');
+    expect(forfeitPlayer(state, 'p-a')).toEqual([]); // idempotent
+    expect(forfeitPlayer(state, 'ghost')).toEqual([]);
+    events = forfeitPlayer(state, 'p-b');
+    expect(events.some((e) => e.type === 'playerForfeited')).toBe(true);
+    expect(state.phase).toBe('lost');
+    expect(stepGame(state, [])).toEqual([]);
   });
 
   it('boulders chase the nearest alive player', () => {

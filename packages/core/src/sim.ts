@@ -89,6 +89,7 @@ export type GameEvent =
   | { seq: number; tick: number; type: 'chuteWarning'; boulderId: string; chuteId: string }
   | { seq: number; tick: number; type: 'boulderReleased'; boulderId: string; chuteId: string }
   | { seq: number; tick: number; type: 'playerDefeated'; playerId: string; boulderId: string }
+  | { seq: number; tick: number; type: 'playerForfeited'; playerId: string }
   | { seq: number; tick: number; type: 'gameWon'; playerId: string }
   | { seq: number; tick: number; type: 'commandRejected'; playerId: string; commandSeq: number; reason: string };
 
@@ -361,6 +362,22 @@ export function stepGame(state: GameState, commands: readonly PlayerCommand[]): 
   updatePendingBoulders(state, emit);
 
   return events;
+}
+
+/**
+ * Authority-side exit (disconnect, kick): the player spectates from now on
+ * without a contact. Does not advance the tick; a team wipe ends the run.
+ */
+export function forfeitPlayer(state: GameState, playerId: string): GameEvent[] {
+  const player = state.players[playerId];
+  if (!player || !player.alive || state.phase === 'won' || state.phase === 'lost') return [];
+  player.alive = false;
+  player.dir = null;
+  player.bufferedDir = null;
+  player.powerTicks = 0;
+  const event: GameEvent = { type: 'playerForfeited', playerId, seq: state.nextEventSeq++, tick: state.tick };
+  if (alivePlayerIds(state).length === 0) state.phase = 'lost';
+  return [event];
 }
 
 // ---------------------------------------------------------------------------

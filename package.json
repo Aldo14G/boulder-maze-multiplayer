@@ -16,9 +16,11 @@
     "build": "npm run build --workspace @boulder-maze/core && npm run build --workspace @boulder-maze/web",
     "preview": "npm run preview --workspace @boulder-maze/web",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "vitest run --root packages/core",
+    "test": "npm run test --workspaces --if-present",
     "validate": "npm run build --workspace @boulder-maze/core --silent && node scripts/validate-map.mjs",
     "smoke": "npm run build --workspace @boulder-maze/core --silent && node scripts/headless-smoke.mjs",
-    "test:e2e": "npm run test:e2e --workspace @boulder-maze/web"
+    "test:e2e": "npm run test:e2e --workspace @boulder-maze/web",
+    "server": "npm run build --workspace @boulder-maze/core --silent && npm run build --workspace @boulder-maze/server --silent && npm run start --workspace @boulder-maze/server",
+    "test:net": "npm run build --workspace @boulder-maze/core --silent && npm run build --workspace @boulder-maze/server --silent && node scripts/net-smoke.mjs"
   }
 }
