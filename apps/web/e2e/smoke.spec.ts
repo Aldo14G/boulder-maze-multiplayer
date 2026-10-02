@@ -89,8 +89,10 @@ test('buttons are real focusable buttons', async ({ page }) => {
 
 test('HUD shows score, pellet count, and drill meter when powered', async ({ page }) => {
   await page.locator('#btn-primary').click();
-  await expect(page.locator('#hud-score')).toContainText('Score');
-  await expect(page.locator('#hud-pellets')).toContainText('Pellets');
+  await expect(page.locator('#hud-score')).toHaveText(/\d+/);
+  await expect(page.locator('#hud-pellets')).toHaveText(/\d+/);
+  await expect(page.locator('#hud-top')).toContainText('Score');
+  await expect(page.locator('#hud-top')).toContainText('Pellets');
   // drive long enough that the run progresses; pellets decrease
   await page.waitForFunction(
     () => (window as never as { __BOULDER__: { snapshot(): { phase: string } } }).__BOULDER__.snapshot().phase === 'playing',

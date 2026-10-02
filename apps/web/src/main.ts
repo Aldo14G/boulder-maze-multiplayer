@@ -21,7 +21,8 @@ if (online) {
     onLobby: (players, phase) => {
       if (phase === 'running') return;
       if (hud.overlayShown !== 'lobby') hud.showOverlay('lobby');
-      hud.setLobby(players, remote.localPlayerId, `Connected to ${serverUrl} as ${playerName}`);
+      const invite = `${window.location.origin}${window.location.pathname}?mode=online&server=${encodeURIComponent(serverUrl)}`;
+      hud.setLobby(players, remote.localPlayerId, `${players.filter((p) => p.connected).length}/4 seats · all players must be ready`, invite);
     },
     onStart: () => hud.hideOverlay(),
     onStatus: (status, detail) => {
@@ -97,7 +98,7 @@ new Phaser.Game({
   parent: 'game-container',
   width: world.width,
   height: world.height,
-  backgroundColor: '#10131a',
+  backgroundColor: '#171c48',
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

@@ -6,38 +6,58 @@
     <title>Boulder Maze</title>
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
-  <body>
+  <body data-theme="arcade">
     <div id="app">
       <div id="game-container" aria-label="Boulder Maze game board"></div>
 
-      <div id="hud-top" hidden>
-        <span class="hud-brand">BOULDER MAZE</span>
-        <span id="hud-score" class="hud-stat">Score 0</span>
-        <span id="hud-pellets" class="hud-stat">Pellets 0</span>
-        <span id="hud-drill" class="hud-drill" hidden>
-          <span class="hud-drill-label">DRILL</span>
-          <span class="hud-drill-track"><span id="hud-drill-fill"></span></span>
-        </span>
-        <button id="btn-pause" type="button" class="hud-btn">Pause</button>
-      </div>
+      <header id="hud-top" hidden>
+        <span class="hud-brand px-display px-display--xs">Boulder Maze</span>
+        <div class="px-score px-score--surface hud-score">
+          <span class="px-score-label">Score</span>
+          <span id="hud-score" class="px-score-value">0</span>
+        </div>
+        <div class="px-score px-score--surface hud-score" id="hud-team-wrap" hidden>
+          <span class="px-score-label">Team</span>
+          <span id="hud-team" class="px-score-value">0</span>
+        </div>
+        <div class="px-score px-score--surface hud-score">
+          <span class="px-score-label">Pellets</span>
+          <span id="hud-pellets" class="px-score-value">0</span>
+        </div>
+        <div id="hud-drill" class="hud-drill" hidden>
+          <span class="px-score-label">Drill</span>
+          <div class="px-progress px-progress--info hud-drill-track" role="progressbar" aria-label="Drill time left">
+            <span id="hud-drill-fill" class="px-progress-fill"></span>
+          </div>
+        </div>
+        <ul id="hud-seats" class="hud-seats" aria-label="Players"></ul>
+        <button id="btn-pause" type="button" class="px-btn px-btn--sm">Pause</button>
+      </header>
 
-      <div id="ready-text" hidden></div>
-      <div id="hud-net" hidden aria-live="off"></div>
+      <div id="ready-text" class="px-display px-display--md" hidden></div>
+      <div id="hud-net" class="px-card px-card--compact" hidden aria-live="off"></div>
 
       <div id="overlay">
-        <div id="overlay-card">
-          <h1 id="overlay-title">Boulder Maze</h1>
-          <p id="overlay-body">
-            Clear every pellet while dodging the boulders. Super Pellets turn
-            your triangle into a boulder-breaking drill for 8 seconds.
-          </p>
-          <ul id="overlay-controls" class="controls">
-            <li><kbd>↑←↓→</kbd> or <kbd>WASD</kbd> — steer</li>
-            <li><kbd>P</kbd> / <kbd>Esc</kbd> — pause</li>
-          </ul>
-          <div id="overlay-actions">
-            <button id="btn-primary" type="button" class="hud-btn primary">Start</button>
-            <button id="btn-secondary" type="button" class="hud-btn" hidden>Restart</button>
+        <div id="overlay-card" class="px-dialog" role="dialog" aria-labelledby="overlay-title">
+          <div class="px-dialog-header">
+            <h1 id="overlay-title" class="px-dialog-title px-display px-display--sm">Boulder Maze</h1>
+          </div>
+          <div class="px-dialog-body">
+            <p id="overlay-body">
+              Clear every pellet while dodging the boulders. Super Pellets turn
+              your triangle into a boulder-breaking drill for 8 seconds.
+            </p>
+            <ul id="lobby-roster" class="lobby-roster" hidden aria-label="Lobby"></ul>
+            <p id="lobby-invite" class="lobby-invite" hidden></p>
+            <ul id="overlay-controls" class="controls">
+              <li><kbd class="px-kbd">↑←↓→</kbd> <kbd class="px-kbd">WASD</kbd> steer</li>
+              <li><kbd class="px-kbd">P</kbd> <kbd class="px-kbd">Esc</kbd> pause</li>
+              <li id="control-net" hidden><kbd class="px-kbd">N</kbd> toggle prediction</li>
+            </ul>
+          </div>
+          <div id="overlay-actions" class="px-dialog-footer">
+            <button id="btn-secondary" type="button" class="px-btn" hidden>Restart</button>
+            <button id="btn-primary" type="button" class="px-btn px-btn--primary">Start</button>
           </div>
         </div>
       </div>
