@@ -6,7 +6,7 @@ import {
   stepGame,
 } from '../src/index.js';
 import type { Direction, PlayerCommand } from '../src/index.js';
-import { LOCAL_PLAYER_ID } from '../src/index.js';
+import { BOULDER_MAZE_MAP, LOCAL_PLAYER_ID } from '../src/index.js';
 import { miniMap } from './fixtures.js';
 import { clearPellets, makeState, placePlayer, player, resetSeq, startPlaying } from './helpers.js';
 
@@ -79,4 +79,48 @@ describe('determinism', () => {
     expect(restored.players[LOCAL_PLAYER_ID]!.pos).toEqual(state.players[LOCAL_PLAYER_ID]!.pos);
     expect(restored.players[LOCAL_PLAYER_ID]!.bufferedDir).toBe('down');
   });
+
+  it('multiplayer: identical seed + generated input log reproduces identical state', () => {
+    // property-style: for several seeds and input streams, two independent
+    // replays of the same (seed, log) pair must serialize identically —
+    // the invariant the shared-core prediction and reconciliation rely on.
+    for (const seed of [1, 2, 3, 4, 5]) {
+      for (const inputSeed of [11, 22]) {
+        expect(serializeGame(runRandom(seed, inputSeed, 300))).toBe(
+          serializeGame(runRandom(seed, inputSeed, 300)),
+        );
+      }
+    }
+  });
 });
+
+const MULTI_IDS = ['p-a', 'p-b', 'p-c', 'p-d'];
+const DIRS: Direction[] = ['up', 'down', 'left', 'right'];
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Four players, each randomly re-steering ~15% of ticks; a pure function of (seed, inputSeed). */
+function runRandom(seed: number, inputSeed: number, ticks: number): ReturnType<typeof createGame> {
+  const state = createGame(undefined, BOULDER_MAZE_MAP, seed, MULTI_IDS);
+  const rand = mulberry32(inputSeed);
+  const seq = new Map(MULTI_IDS.map((id) => [id, 0]));
+  for (let t = 1; t <= ticks; t++) {
+    const commands: PlayerCommand[] = [];
+    for (const id of MULTI_IDS) {
+      if (rand() < 0.15) {
+        seq.set(id, seq.get(id)! + 1);
+        commands.push({ playerId: id, direction: DIRS[Math.floor(rand() * 4)]!, seq: seq.get(id)!, tick: state.tick + 1 });
+      }
+    }
+    stepGame(state, commands);
+  }
+  return state;
+}
