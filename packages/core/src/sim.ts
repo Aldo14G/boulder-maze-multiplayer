@@ -1,4 +1,4 @@
-import { DEFAULT_CONFIG } from './config.js';
+import { DEFAULT_CONFIG, MAX_PLAYERS } from './config.js';
 import type { GameConfig } from './config.js';
 import {
   BOULDER_MAZE_MAP,
@@ -36,6 +36,8 @@ export interface PlayerState {
   /** Remaining drill ticks; 0 = unpowered. */
   powerTicks: number;
   lastCommandSeq: number;
+  /** false once defeated: the player spectates and no longer affects the sim. */
+  alive: boolean;
 }
 
 export interface BoulderState {
@@ -100,10 +102,16 @@ type Emit = (e: EventInput) => void;
 
 export const LOCAL_PLAYER_ID = 'player-1';
 
+/**
+ * `playerIds` are seated in sorted-id order on the map's spawns ranked from
+ * safest (farthest from any chute entry) to least safe, wrapping around when
+ * a map offers fewer spawns than players. A lone player gets the safest seat.
+ */
 export function createGame(
   config: GameConfig = DEFAULT_CONFIG,
   map: MazeMap = BOULDER_MAZE_MAP,
   seed = 1,
+  playerIds: readonly string[] = [LOCAL_PLAYER_ID],
 ): GameState {
   const validation = validateMap(map);
   if (!validation.ok) {
@@ -111,19 +119,25 @@ export function createGame(
     throw new Error(`invalid map '${map.id}':\n${detail}`);
   }
   if (map.chutes.length === 0) throw new Error(`map '${map.id}' defines no boulder chutes`);
+  if (playerIds.length === 0 || playerIds.length > MAX_PLAYERS) {
+    throw new Error(`expected 1..${MAX_PLAYERS} players, got ${playerIds.length}`);
+  }
+  if (new Set(playerIds).size !== playerIds.length) throw new Error('duplicate player ids');
 
-  const spawn = playerSpawns(map)[0]!;
-  const players: Record<string, PlayerState> = {
-    [LOCAL_PLAYER_ID]: {
-      id: LOCAL_PLAYER_ID,
-      pos: tileCenter(spawn, config),
+  const spawns = rankSpawns(map);
+  const players: Record<string, PlayerState> = {};
+  [...playerIds].sort().forEach((id, i) => {
+    players[id] = {
+      id,
+      pos: tileCenter(spawns[i % spawns.length]!, config),
       dir: null,
       bufferedDir: null,
       score: 0,
       powerTicks: 0,
       lastCommandSeq: 0,
-    },
-  };
+      alive: true,
+    };
+  });
 
   const readyUntilTick = config.readyTicks;
   const boulders: Record<string, BoulderState> = {};
@@ -203,6 +217,10 @@ export function stepGame(state: GameState, commands: readonly PlayerCommand[]): 
       emit({ type: 'commandRejected', playerId: cmd.playerId, commandSeq: cmd.seq, reason: 'unknown-player' });
       continue;
     }
+    if (!player.alive) {
+      emit({ type: 'commandRejected', playerId: cmd.playerId, commandSeq: cmd.seq, reason: 'defeated' });
+      continue;
+    }
     if (cmd.tick < state.tick) {
       emit({ type: 'commandRejected', playerId: cmd.playerId, commandSeq: cmd.seq, reason: 'late' });
       continue;
@@ -234,14 +252,15 @@ export function stepGame(state: GameState, commands: readonly PlayerCommand[]): 
 
   // 3. movement — capture pre-move positions for swept contact checks
   const prevPos = new Map<string, Vec>();
-  for (const id of sortedPlayerIds(state)) prevPos.set(id, state.players[id]!.pos);
+  const alive = alivePlayerIds(state);
+  for (const id of alive) prevPos.set(id, state.players[id]!.pos);
   for (const id of sortedBoulderIds(state)) prevPos.set(id, state.boulders[id]!.pos);
 
-  const playerTile = primaryPlayerTile(state);
-  const distField = bfsDistances(state.map, playerTile);
-  const powered = Object.values(state.players).some((p) => p.powerTicks > 0);
+  const targets = alive.map((id) => posToTile(state.players[id]!.pos, cfg));
+  const distField = bfsDistances(state.map, targets);
+  const powered = alive.some((id) => state.players[id]!.powerTicks > 0);
   const bends = new Map<string, Vec | null>();
-  for (const id of sortedPlayerIds(state)) {
+  for (const id of alive) {
     bends.set(id, movePlayer(state, state.players[id]!));
   }
   for (const id of sortedBoulderIds(state)) {
@@ -251,13 +270,15 @@ export function stepGame(state: GameState, commands: readonly PlayerCommand[]): 
 
   // 4. pickups (Super Pellet activates before contact resolution)
   const powerStartedThisTick = new Set<string>();
-  for (const id of sortedPlayerIds(state)) {
+  let lastPelletBy: string | null = null;
+  for (const id of alive) {
     const player = state.players[id]!;
     const idx = tileIndex(state.map, posToTile(player.pos, cfg));
     const kind = state.pellets[idx];
     if (!kind) continue;
     delete state.pellets[idx];
     state.pelletsRemaining -= 1;
+    lastPelletBy = id;
     if (kind === 'super') {
       player.score += cfg.superPelletScore;
       player.powerTicks = cfg.powerTicks; // resets, does not add
@@ -271,8 +292,7 @@ export function stepGame(state: GameState, commands: readonly PlayerCommand[]): 
   }
 
   // 5. contact resolution — swept segments catch mid-tick crossings
-  let defeated = false;
-  for (const pid of sortedPlayerIds(state)) {
+  for (const pid of alive) {
     const player = state.players[pid]!;
     const p0 = prevPos.get(pid)!;
     for (const bid of sortedBoulderIds(state)) {
@@ -295,25 +315,30 @@ export function stepGame(state: GameState, commands: readonly PlayerCommand[]): 
         player.score += cfg.boulderScore;
         emit({ type: 'boulderDestroyed', boulderId: bid, playerId: pid });
       } else {
-        state.phase = 'lost';
+        player.alive = false;
+        player.dir = null;
+        player.bufferedDir = null;
+        player.powerTicks = 0;
         emit({ type: 'playerDefeated', playerId: pid, boulderId: bid });
-        defeated = true;
         break;
       }
     }
-    if (defeated) break;
   }
-  if (defeated) return events;
+  const survivors = alivePlayerIds(state);
+  if (survivors.length === 0) {
+    state.phase = 'lost';
+    return events;
+  }
 
-  // 6. terminal win check — fatal contact above already took precedence
+  // 6. terminal win check — a wipe above already took precedence
   if (state.pelletsRemaining === 0) {
     state.phase = 'won';
-    emit({ type: 'gameWon', playerId: sortedPlayerIds(state)[0]! });
+    emit({ type: 'gameWon', playerId: lastPelletBy ?? survivors[0]! });
     return events;
   }
 
   // 7. timers
-  for (const id of sortedPlayerIds(state)) {
+  for (const id of survivors) {
     const player = state.players[id]!;
     // the collection tick itself does not consume power duration
     if (player.powerTicks > 0 && !powerStartedThisTick.has(id)) {
@@ -538,6 +563,7 @@ function chuteAreaClear(state: GameState, chuteId: string): boolean {
     if (isWalkable(state.map, t)) zone.add(tileIndex(state.map, t));
   }
   for (const player of Object.values(state.players)) {
+    if (!player.alive) continue;
     if (zone.has(tileIndex(state.map, posToTile(player.pos, state.config)))) return false;
   }
   for (const other of Object.values(state.boulders)) {
@@ -559,18 +585,30 @@ function sortedBoulderIds(state: GameState): string[] {
   return Object.keys(state.boulders).sort();
 }
 
-function primaryPlayerTile(state: GameState): TilePos {
-  const first = state.players[sortedPlayerIds(state)[0]!]!;
-  return posToTile(first.pos, state.config);
+/** Spawns ordered by descending BFS distance to the nearest chute entry; scan order breaks ties. */
+function rankSpawns(map: MazeMap): TilePos[] {
+  const danger = bfsDistances(map, map.chutes.map((c) => c.entry));
+  const safety = (t: TilePos) => danger.get(tileIndex(map, t)) ?? Number.MAX_SAFE_INTEGER;
+  return playerSpawns(map)
+    .map((tile, i) => ({ tile, i }))
+    .sort((a, b) => safety(b.tile) - safety(a.tile) || a.i - b.i)
+    .map((s) => s.tile);
 }
 
-/** BFS distances from `start` over the walkable-tile graph (tile indices). */
-function bfsDistances(map: MazeMap, start: TilePos): Map<number, number> {
+function alivePlayerIds(state: GameState): string[] {
+  return sortedPlayerIds(state).filter((id) => state.players[id]!.alive);
+}
+
+/** Multi-source BFS: distance from each walkable tile to the nearest `start`. */
+function bfsDistances(map: MazeMap, starts: readonly TilePos[]): Map<number, number> {
   const dist = new Map<number, number>();
-  const startIdx = tileIndex(map, start);
-  if (!isWalkable(map, start)) return dist;
-  dist.set(startIdx, 0);
-  const queue: TilePos[] = [start];
+  const queue: TilePos[] = [];
+  for (const start of starts) {
+    const idx = tileIndex(map, start);
+    if (!isWalkable(map, start) || dist.has(idx)) continue;
+    dist.set(idx, 0);
+    queue.push(start);
+  }
   for (let i = 0; i < queue.length; i++) {
     const t = queue[i]!;
     const d = dist.get(tileIndex(map, t))!;
