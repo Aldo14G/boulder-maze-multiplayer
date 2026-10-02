@@ -4,8 +4,8 @@ import {
   DIR_VECTORS,
   isWalkable,
 } from '@boulder-maze/core';
-import type { Direction, GameEvent, GameState, MazeMap, TilePos, Vec } from '@boulder-maze/core';
-import type { LocalGameSession } from '../session/LocalGameSession.js';
+import type { Direction, GameEvent, GameState, MazeMap, PlayerState, TilePos, Vec } from '@boulder-maze/core';
+import type { GameSession } from '../session/LocalGameSession.js';
 import type { Hud } from '../ui/hud.js';
 
 /** Design resolution — Phaser.Scale.FIT preserves square tiles everywhere. */
@@ -23,6 +23,9 @@ const DIR_ANGLES: Record<Direction, number> = {
 
 const BOULDER_COLORS = [0xef476f, 0x06d6a0, 0xf78c6b, 0xb388ff];
 const BOULDER_SCARED = 0x9fb4d8;
+/** Seat colours, indexed by sorted player id so every client agrees. */
+export const PLAYER_COLORS = [0xffe9a3, 0x7dd3fc, 0xc4b5fd, 0x86efac];
+const PLAYER_POWERED = 0xff9e4d;
 const PELLET_COLOR = 0xd8dee9;
 const SUPER_COLOR = 0xffd166;
 
@@ -41,8 +44,9 @@ interface Tube {
 }
 
 export class MazeScene extends Phaser.Scene {
-  private readonly session: LocalGameSession;
+  private readonly session: GameSession;
   private readonly hud: Hud;
+  private lastSnap!: GameState;
   private gfx!: Phaser.GameObjects.Graphics;
   private stripesGfx!: Phaser.GameObjects.Graphics;
   private maskGfx!: Phaser.GameObjects.Graphics;
@@ -51,7 +55,7 @@ export class MazeScene extends Phaser.Scene {
   private animTick = 0;
   private units = 1;
 
-  constructor(session: LocalGameSession, hud: Hud) {
+  constructor(session: GameSession, hud: Hud) {
     super('maze');
     this.session = session;
     this.hud = hud;
@@ -69,6 +73,7 @@ export class MazeScene extends Phaser.Scene {
 
   create(): void {
     const snap = this.session.snapshot();
+    this.lastSnap = snap;
     this.units = snap.config.unitsPerTile;
     this.originX = MARGIN_X_TILES * TILE_PX;
     this.originY = MARGIN_TOP_TILES * TILE_PX;
@@ -82,10 +87,11 @@ export class MazeScene extends Phaser.Scene {
   override update(_time: number, delta: number): void {
     this.session.advance(delta);
     const snap = this.session.snapshot();
+    this.lastSnap = snap;
     for (const e of this.session.drainEvents()) this.onEvent(e);
     this.animTick += 1;
     this.drawDynamic(snap);
-    this.hud.update(snap, this.session.paused);
+    this.hud.update(snap, this.session.paused, this.session.localPlayerId);
   }
 
   // ------------------------------------------------------------------ coords
@@ -174,7 +180,12 @@ export class MazeScene extends Phaser.Scene {
     this.drawChuteWarnings(g, snap);
     this.drawPellets(g, snap);
     this.drawBoulders(g, snap);
-    this.drawPlayer(g, snap);
+    const ids = Object.keys(snap.players).sort();
+    ids.forEach((id, i) => {
+      if (id !== this.session.localPlayerId) this.drawPlayer(g, snap, snap.players[id]!, PLAYER_COLORS[i % PLAYER_COLORS.length]!, false);
+    });
+    const meIdx = ids.indexOf(this.session.localPlayerId ?? '');
+    if (meIdx >= 0) this.drawPlayer(g, snap, snap.players[ids[meIdx]!]!, PLAYER_COLORS[meIdx % PLAYER_COLORS.length]!, true);
     this.drawFlashes(g);
   }
 
@@ -214,7 +225,7 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private drawBoulders(g: Phaser.GameObjects.Graphics, snap: GameState): void {
-    const powered = (snap.players[Object.keys(snap.players)[0] ?? '']?.powerTicks ?? 0) > 0;
+    const powered = Object.values(snap.players).some((p) => p.alive && p.powerTicks > 0);
     Object.values(snap.boulders).forEach((b, i) => {
       if (b.status !== 'active') return;
       const p = this.unitToPx(b.pos);
@@ -254,9 +265,13 @@ export class MazeScene extends Phaser.Scene {
     });
   }
 
-  private drawPlayer(g: Phaser.GameObjects.Graphics, snap: GameState): void {
-    const player = snap.players[Object.keys(snap.players)[0] ?? ''];
-    if (!player) return;
+  private drawPlayer(
+    g: Phaser.GameObjects.Graphics,
+    snap: GameState,
+    player: PlayerState,
+    color: number,
+    isLocal: boolean,
+  ): void {
     const pos = this.unitToPx(player.pos);
     const dir = player.dir ?? this.lastDir.get(player.id) ?? 'right';
     if (player.dir) this.lastDir.set(player.id, player.dir);
@@ -273,9 +288,19 @@ export class MazeScene extends Phaser.Scene {
     const base2 = rot(-TILE_PX * 0.3, TILE_PX * 0.3);
     const tri = new Phaser.Geom.Triangle(apex.x, apex.y, base1.x, base1.y, base2.x, base2.y);
 
+    if (!player.alive) {
+      g.lineStyle(2, color, 0.35);
+      g.strokeTriangleShape(tri);
+      return;
+    }
+
     const powered = player.powerTicks > 0;
-    g.fillStyle(powered ? 0xff9e4d : 0xffe9a3, 1);
+    g.fillStyle(powered ? PLAYER_POWERED : color, 1);
     g.fillTriangleShape(tri);
+    if (isLocal) {
+      g.lineStyle(2, 0xffffff, 0.9);
+      g.strokeCircle(pos.x, pos.y, TILE_PX * 0.5);
+    }
 
     if (powered) {
       // animated drill bands clipped to the triangle
@@ -317,7 +342,7 @@ export class MazeScene extends Phaser.Scene {
   // ------------------------------------------------------------------- fx
 
   private onEvent(e: GameEvent): void {
-    const snap = this.session.debugState();
+    const snap = this.lastSnap;
     if (e.type === 'pelletCollected') {
       const tx = e.tile % snap.map.width;
       const ty = Math.floor(e.tile / snap.map.width);
@@ -342,7 +367,7 @@ export class MazeScene extends Phaser.Scene {
         color: e.type === 'boulderDestroyed' ? 0xff9e4d : 0xffd166,
         age: 0,
       });
-    } else if (e.type === 'playerDefeated' || e.type === 'gameWon') {
+    } else if (e.type === 'playerDefeated' || e.type === 'playerForfeited' || e.type === 'gameWon') {
       const player = snap.players[e.playerId];
       if (player) {
         const p = this.unitToPx(player.pos);

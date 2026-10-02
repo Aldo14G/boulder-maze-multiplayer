@@ -1,5 +1,5 @@
 import type { Direction } from '@boulder-maze/core';
-import type { LocalGameSession } from './session/LocalGameSession.js';
+import type { GameSession } from './session/LocalGameSession.js';
 
 const KEY_DIRECTIONS: Record<string, Direction> = {
   ArrowUp: 'up',
@@ -24,7 +24,7 @@ export class KeyboardAdapter {
   private readonly held = new Set<string>();
 
   constructor(
-    private readonly session: LocalGameSession,
+    private readonly session: GameSession,
     private readonly onPauseKey: () => void,
   ) {}
 
