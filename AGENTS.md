@@ -32,9 +32,11 @@ Node ≥ 22.12 (`.nvmrc` → 24; v22.14 works). Fresh clone:
 npm install
 npm run build --workspace @boulder-maze/core   # REQUIRED before typecheck: apps/* resolve core from dist/
 npm run typecheck
-npm test            # core Vitest (55 baseline tests)
+npm test            # Vitest in every workspace (core sim + server Room)
 npm run smoke       # 1200-tick headless determinism check
 npm run validate    # map validator
+npm run test:net    # boots the server, two ws clients must agree on every shared tick
+npm run server      # authoritative server on ws://0.0.0.0:8787 (PORT to override)
 ```
 
 Before claiming a slice done, run every command above plus the slice's own

@@ -1,0 +1,31 @@
+{
+  "name": "@boulder-maze/server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Authoritative Boulder Maze game server: owns the tick loop, validates input, broadcasts snapshots over WebSocket.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@boulder-maze/core": "*",
+    "ws": "8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/ws": "8.18.1",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
