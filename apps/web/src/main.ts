@@ -51,6 +51,7 @@ if (online) {
     if (e.key === 'n' || e.key === 'N') remote.setPrediction(!remote.prediction);
   });
   (window as unknown as { __NET__?: () => unknown }).__NET__ = () => remote.stats;
+  setInterval(() => hud.updateNet(remote.status === 'running' || remote.status === 'ended' ? remote.stats : null), 250);
 } else {
   const local = new LocalGameSession();
   session = local;

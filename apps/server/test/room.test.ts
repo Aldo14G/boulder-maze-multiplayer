@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { BOULDER_MAZE_MAP } from '@boulder-maze/core';
-import { PROTOCOL_VERSION, parseClientMessage, Room } from '../src/index.js';
-import type { ServerMessage } from '../src/index.js';
+import type { GameState } from '@boulder-maze/core';
+import { applyDelta, PROTOCOL_VERSION, parseClientMessage, Room } from '../src/index.js';
+import type { ServerMessage, StateDelta } from '../src/index.js';
 
 const TICK_MS = 1000 / 60;
 
@@ -64,14 +65,44 @@ describe('Room', () => {
     expect(player.bufferedDir).toBe('right');
   });
 
-  it('broadcasts full snapshots on the cadence and events as they happen', () => {
+  it('broadcasts deltas on the cadence, keyframes once a second, and they reconstruct the state', () => {
+    const { room, join, sent, outbox } = harness({ keyframeEvery: 60 });
+    const a = join('ana');
+    room.handle(a, { t: 'ready', ready: true });
+    room.handle(a, { t: 'input', seq: 1, direction: 'left' });
+    for (let i = 0; i < 129; i++) room.advance(TICK_MS);
+    expect(room.tick).toBe(129);
+    const deltas = sent(a, 'delta') as Array<{ delta: StateDelta }>;
+    const snaps = sent(a, 'snapshot') as Array<{ state: GameState }>;
+    expect(snaps.map((s) => s.state.tick)).toEqual([60, 120]);
+    expect(deltas[0]!.delta.baseTick).toBe(0);
+    expect(deltas.length).toBe(43 - 2); // ticks 3..129 step 3, minus the two keyframes
+
+    // replaying start → deltas → keyframes → deltas must land exactly on the authority
+    let client: GameState | null = null;
+    for (const { to, msg } of outbox) {
+      if (to !== a) continue;
+      if (msg.t === 'start' || msg.t === 'snapshot') client = msg.state;
+      else if (msg.t === 'delta') {
+        client = applyDelta(client!, msg.delta);
+        expect(client).not.toBeNull();
+      }
+    }
+    expect(client!.tick).toBe(129);
+    expect(client).toEqual(room.debugState());
+  });
+
+  it('resync hands back the shared delta base', () => {
     const { room, join, sent } = harness();
     const a = join('ana');
     room.handle(a, { t: 'ready', ready: true });
-    room.advance(TICK_MS * 6 + 1);
-    expect(room.tick).toBe(6);
-    const snaps = sent(a, 'snapshot') as Array<{ state: { tick: number } }>;
-    expect(snaps.map((s) => s.state.tick)).toEqual([3, 6]);
+    room.advance(TICK_MS * 7);
+    room.handle(a, { t: 'resync' });
+    const snaps = sent(a, 'snapshot') as Array<{ state: GameState }>;
+    expect(snaps.at(-1)!.state.tick).toBe(6);
+    room.advance(TICK_MS * 3);
+    const last = (sent(a, 'delta') as Array<{ delta: StateDelta }>).at(-1)!.delta;
+    expect(applyDelta(snaps.at(-1)!.state, last)).not.toBeNull();
   });
 
   it('a disconnect mid-match forfeits that player; a team wipe ends the match', () => {

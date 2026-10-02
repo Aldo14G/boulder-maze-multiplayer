@@ -8,15 +8,17 @@ import {
   stepGame,
 } from '@boulder-maze/core';
 import type { Direction, GameConfig, GameEvent, GameState, MazeMap, PlayerCommand } from '@boulder-maze/core';
-import { PROTOCOL_VERSION } from './protocol.js';
+import { makeDelta, PROTOCOL_VERSION } from './protocol.js';
 import type { ClientMessage, LobbyPlayer, ServerMessage } from './protocol.js';
 
 export interface RoomOptions {
   roomId?: string;
   config?: GameConfig;
   map?: MazeMap;
-  /** Full snapshot cadence in ticks (3 ≈ 20 Hz at 60 tps). */
+  /** Delta cadence in ticks (3 ≈ 20 Hz at 60 tps). */
   snapshotEvery?: number;
+  /** Full-snapshot keyframe cadence in ticks (60 = once a second). */
+  keyframeEvery?: number;
   /** Seed for match n is `seedBase + n`, so replays are reproducible. */
   seedBase?: number;
 }
@@ -40,9 +42,12 @@ export class Room {
   private readonly config: GameConfig;
   private readonly map: MazeMap;
   private readonly snapshotEvery: number;
+  private readonly keyframeEvery: number;
   private readonly seedBase: number;
   private readonly seats = new Map<string, Seat>();
   private state: GameState | null = null;
+  /** Last state every connected client has (as snapshot or delta); deltas are diffed against it. */
+  private lastSent: GameState | null = null;
   private accumulatorMs = 0;
   private matches = 0;
   private nextSeat = 1;
@@ -52,6 +57,7 @@ export class Room {
     this.config = opts.config ?? DEFAULT_CONFIG;
     this.map = opts.map ?? BOULDER_MAZE_MAP;
     this.snapshotEvery = opts.snapshotEvery ?? 3;
+    this.keyframeEvery = opts.keyframeEvery ?? 60;
     this.seedBase = opts.seedBase ?? 1000;
   }
 
@@ -124,7 +130,8 @@ export class Room {
         return;
       }
       case 'resync': {
-        if (this.state) this.send(playerId, { t: 'snapshot', state: snapshotState(this.state) });
+        // the shared delta base, so the client's next delta applies cleanly
+        if (this.lastSent) this.send(playerId, { t: 'snapshot', state: this.lastSent });
         return;
       }
       case 'ping':
@@ -154,7 +161,8 @@ export class Room {
     }
     this.emitEvents(stepGame(state, commands));
     const terminal = state.phase === 'won' || state.phase === 'lost';
-    if (terminal || state.tick % this.snapshotEvery === 0) this.broadcastSnapshot();
+    if (terminal || state.tick % this.keyframeEvery === 0) this.broadcastSnapshot();
+    else if (state.tick % this.snapshotEvery === 0) this.broadcastDelta();
     if (terminal) {
       for (const seat of this.seats.values()) seat.ready = false;
       this.broadcastLobby();
@@ -173,6 +181,7 @@ export class Room {
       seat.lastSeq = 0;
     }
     const snapshot = snapshotState(this.state);
+    this.lastSent = snapshot;
     for (const seat of seated) this.send(seat.id, { t: 'start', state: snapshot });
     this.broadcastLobby();
   }
@@ -184,7 +193,17 @@ export class Room {
 
   private broadcastSnapshot(): void {
     if (!this.state) return;
-    this.broadcast({ t: 'snapshot', state: snapshotState(this.state) });
+    const snapshot = snapshotState(this.state);
+    this.lastSent = snapshot;
+    this.broadcast({ t: 'snapshot', state: snapshot });
+  }
+
+  private broadcastDelta(): void {
+    if (!this.state) return;
+    if (!this.lastSent) return this.broadcastSnapshot();
+    const snapshot = snapshotState(this.state);
+    this.broadcast({ t: 'delta', delta: makeDelta(this.lastSent, snapshot) });
+    this.lastSent = snapshot;
   }
 
   private broadcastLobby(): void {

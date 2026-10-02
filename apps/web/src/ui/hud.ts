@@ -1,5 +1,6 @@
 import type { GameState } from '@boulder-maze/core';
 import type { LobbyPlayer } from '@boulder-maze/server/protocol';
+import type { NetStats } from '../session/RemoteGameSession.js';
 
 export type OverlayMode = 'title' | 'paused' | 'won' | 'lost' | 'lobby' | 'offline';
 
@@ -27,6 +28,7 @@ export class Hud {
   private readonly drillFill = el<HTMLSpanElement>('hud-drill-fill');
   private readonly pauseBtn = el<HTMLButtonElement>('btn-pause');
   private readonly readyEl = el<HTMLDivElement>('ready-text');
+  private readonly netEl = el<HTMLDivElement>('hud-net');
   private readonly overlay = el<HTMLDivElement>('overlay');
   private readonly overlayTitle = el<HTMLHeadingElement>('overlay-title');
   private readonly overlayBody = el<HTMLParagraphElement>('overlay-body');
@@ -158,6 +160,21 @@ export class Hud {
 
   setPauseAvailable(available: boolean): void {
     this.pauseBtn.hidden = !available;
+  }
+
+  /** Netgraph; pass null to hide. */
+  updateNet(stats: NetStats | null): void {
+    this.netEl.hidden = stats === null;
+    if (!stats) return;
+    this.netEl.replaceChildren();
+    const mode = document.createElement('span');
+    mode.className = stats.prediction ? 'on' : 'off';
+    mode.textContent = `prediction ${stats.prediction ? 'ON ' : 'OFF'} [N]`;
+    this.netEl.append(
+      mode,
+      `\nrtt ${String(stats.rttMs).padStart(4)} ms   lead ${String(stats.leadTicks).padStart(2)}t  ahead ${String(stats.aheadTicks).padStart(3)}t`,
+      `\nsnap ${String(stats.snapshotsPerSecond).padStart(3)}/s  ${String(stats.kbPerSecond).padStart(4)} KB/s  fix ${String(stats.lastCorrectionUnits).padStart(3)}u  resync ${stats.resyncs}`,
+    );
   }
 
   hideOverlay(): void {
