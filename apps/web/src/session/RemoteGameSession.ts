@@ -1,6 +1,6 @@
 import { BOULDER_MAZE_MAP, createGame } from '@boulder-maze/core';
 import type { Direction, GameEvent, GameState } from '@boulder-maze/core';
-import { PROTOCOL_VERSION } from '@boulder-maze/server/protocol';
+import { applyDelta, PROTOCOL_VERSION } from '@boulder-maze/server/protocol';
 import type { ClientMessage, LobbyPlayer, ServerMessage } from '@boulder-maze/server/protocol';
 import type { GameSession } from './LocalGameSession.js';
 import { composeView, interpolate, leadTicksFor, predict, stepPredicted, unacknowledged } from './netcode.js';
@@ -22,6 +22,8 @@ export interface NetStats {
   /** Position error corrected on the last reconciliation, in sub-tile units. */
   lastCorrectionUnits: number;
   snapshotsPerSecond: number;
+  kbPerSecond: number;
+  resyncs: number;
   prediction: boolean;
 }
 
@@ -57,6 +59,9 @@ export class RemoteGameSession implements GameSession {
   private rttMs = 0;
   private lastCorrection = 0;
   private snapshotTimes: number[] = [];
+  private bytesLog: Array<{ at: number; bytes: number }> = [];
+  private resyncs = 0;
+  private resyncPending = false;
   private tickOffset = 0; // server tick ≈ now / tickMs + tickOffset
   private pingTimer: ReturnType<typeof setInterval> | null = null;
   prediction = true;
@@ -76,7 +81,11 @@ export class RemoteGameSession implements GameSession {
       this.send({ t: 'join', name: this.name, protocol: PROTOCOL_VERSION, mapId: BOULDER_MAZE_MAP.id, mapVersion: BOULDER_MAZE_MAP.version });
       this.pingTimer = setInterval(() => this.send({ t: 'ping', sentAt: performance.now() }), PING_INTERVAL_MS);
     });
-    this.ws.addEventListener('message', (ev) => this.onMessage(JSON.parse(String(ev.data)) as ServerMessage));
+    this.ws.addEventListener('message', (ev) => {
+      const raw = String(ev.data);
+      this.bytesLog.push({ at: performance.now(), bytes: raw.length });
+      this.onMessage(JSON.parse(raw) as ServerMessage);
+    });
     this.ws.addEventListener('close', () => this.setStatus('closed'));
     this.ws.addEventListener('error', () => this.setStatus('closed', 'connection error'));
   }
@@ -100,12 +109,15 @@ export class RemoteGameSession implements GameSession {
   get stats(): NetStats {
     const now = performance.now();
     this.snapshotTimes = this.snapshotTimes.filter((t) => now - t < 1000);
+    this.bytesLog = this.bytesLog.filter((b) => now - b.at < 1000);
     return {
       rttMs: Math.round(this.rttMs),
       leadTicks: this.leadTicks,
       aheadTicks: this.predicted ? this.predicted.tick - this.auth.tick : 0,
       lastCorrectionUnits: Math.round(this.lastCorrection),
       snapshotsPerSecond: this.snapshotTimes.length,
+      kbPerSecond: Math.round(this.bytesLog.reduce((s, b) => s + b.bytes, 0) / 1024),
+      resyncs: this.resyncs,
       prediction: this.prediction,
     };
   }
@@ -241,9 +253,24 @@ export class RemoteGameSession implements GameSession {
         this.cb.onStart?.();
         return;
       case 'snapshot':
+        this.resyncPending = false;
         this.acceptAuthoritative(msg.state);
         if (msg.state.phase === 'won' || msg.state.phase === 'lost') this.setStatus('ended');
         return;
+      case 'delta': {
+        if (this.resyncPending) return; // wait for the keyframe we asked for
+        const next = applyDelta(this.auth, msg.delta);
+        if (!next) {
+          // gap in the stream (dropped/reordered frame): ask for the shared base once
+          this.resyncPending = true;
+          this.resyncs += 1;
+          this.send({ t: 'resync' });
+          return;
+        }
+        this.acceptAuthoritative(next);
+        if (next.phase === 'won' || next.phase === 'lost') this.setStatus('ended');
+        return;
+      }
       case 'events':
         this.eventBacklog.push(...msg.events);
         return;

@@ -22,9 +22,54 @@ export type ServerMessage =
   | { t: 'lobby'; players: LobbyPlayer[]; phase: 'lobby' | 'running' | 'ended' }
   | { t: 'start'; state: GameState }
   | { t: 'snapshot'; state: GameState }
+  | { t: 'delta'; delta: StateDelta }
   | { t: 'events'; tick: number; events: GameEvent[] }
   | { t: 'pong'; sentAt: number; serverTick: number }
   | { t: 'reject'; reason: string };
+
+/**
+ * Everything that can change between two authoritative ticks, minus the
+ * static map and the pellets that are still there. Players and boulders are
+ * small enough to ship whole; pellets only ever disappear.
+ */
+export interface StateDelta {
+  baseTick: number;
+  tick: number;
+  phase: GameState['phase'];
+  readyUntilTick: number;
+  players: GameState['players'];
+  boulders: GameState['boulders'];
+  pelletsRemoved: number[];
+  pelletsRemaining: number;
+  nextEventSeq: number;
+  rngState: number;
+}
+
+export function makeDelta(prev: GameState, next: GameState): StateDelta {
+  const pelletsRemoved: number[] = [];
+  for (const idx of Object.keys(prev.pellets)) if (!(idx in next.pellets)) pelletsRemoved.push(Number(idx));
+  return {
+    baseTick: prev.tick,
+    tick: next.tick,
+    phase: next.phase,
+    readyUntilTick: next.readyUntilTick,
+    players: next.players,
+    boulders: next.boulders,
+    pelletsRemoved,
+    pelletsRemaining: next.pelletsRemaining,
+    nextEventSeq: next.nextEventSeq,
+    rngState: next.rngState,
+  };
+}
+
+/** Returns the next state, or null when `base` is not the delta's base tick (caller should resync). */
+export function applyDelta(base: GameState, delta: StateDelta): GameState | null {
+  if (base.tick !== delta.baseTick) return null;
+  const pellets = { ...base.pellets };
+  for (const idx of delta.pelletsRemoved) delete pellets[idx];
+  const { baseTick: _base, pelletsRemoved: _removed, ...rest } = delta;
+  return { ...base, ...rest, pellets };
+}
 
 const DIRECTIONS: ReadonlySet<string> = new Set(['up', 'down', 'left', 'right']);
 

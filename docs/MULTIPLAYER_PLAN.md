@@ -13,7 +13,9 @@ Answers to `MULTIPLAYER_EXTENSION.md`, in the order they were decided.
 | Player–player overlap | Allowed | Blocking requires ordered collision resolution in the sim for little co-op value. |
 | Defeat | **One life; defeated player becomes spectator; `phase='lost'` only when every player is defeated** | Keeps the baseline tension; smallest sim change (`some` → `every`). Spectators are a natural demo moment. |
 | Late join | Blocked once `gameStarted`; lobby before | Avoids mid-run spawn + snapshot-merge complexity. |
-| Disconnect | Player marked `defeated` by server; room ends when empty | Same path as a boulder contact; one code path. |
+| Disconnect | Player forfeited by server (`forfeitPlayer`); room ends on team wipe | Same path as a boulder contact; one code path. |
+| Reconnect | Not supported mid-match: a dropped client rejoins the next match from the lobby | A real reconnect needs session tokens and a grace period; out of scope for the workshop. `resync` only covers delta gaps on a live socket. |
+| Bandwidth | Deltas at 20 Hz + 1 Hz keyframes: ~28 KB/s per client (was ~110 KB/s with full snapshots) | Measured by `npm run test:net`. |
 | Restart | Server-owned: every connected player presses Ready in lobby | Required by checklist ("authority-owned restart"). |
 | Boulder AI target | Nearest **alive** player via multi-source BFS | Deterministic and uses existing `bfsDistances`. |
 | Spawns | Map v2 adds 4 `P` tiles on the bottom row; players spawn round-robin by join order | `mapVersion` bump already gates protocol compatibility. |
@@ -31,10 +33,10 @@ client → server
 server → client
   { t:'welcome', playerId, roomId, snapshot }   // full state, also used for resync
   { t:'lobby',   players:[{id,name,ready}] }
-  { t:'snapshot', tick, state }                 // full, every N ticks (N=3 initially)
-  { t:'delta',   tick, patch }                  // slice 5
+  { t:'snapshot', state }                       // full keyframe: start, every 60 ticks, terminal, resync
+  { t:'delta',   delta }                        // every 3 ticks: players, boulders, pelletsRemoved, counters
   { t:'events',  tick, events }
-  { t:'ack',     playerId, seq, tick }          // last applied input, for reconciliation
+  // no separate ack: `players[me].lastCommandSeq` in each state is the ack
   { t:'pong',    sentAt, serverTick }
   { t:'reject',  reason }                       // protocol/map mismatch, room full, in progress
 ```

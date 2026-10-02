@@ -66,6 +66,28 @@ body {
   color: var(--ink);
 }
 
+#hud-net {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(16, 19, 26, 0.85);
+  border: 1px solid #2a3040;
+  border-radius: 6px;
+  color: var(--muted);
+  font: 12px/1.5 ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  white-space: pre;
+  z-index: 5;
+}
+
+#hud-net .on {
+  color: #06d6a0;
+}
+
+#hud-net .off {
+  color: var(--danger);
+}
+
 .hud-drill {
   display: flex;
   align-items: center;
