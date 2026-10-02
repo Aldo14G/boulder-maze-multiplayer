@@ -89,6 +89,18 @@ describe('Room', () => {
     expect(room.phase).toBe('ended');
   });
 
+  it('a player joining after a finished match sees the lobby, not the stale outcome', () => {
+    const { room, join, sent } = harness();
+    const a = join('ana');
+    room.handle(a, { t: 'ready', ready: true });
+    room.disconnect(a);
+    expect(room.phase).toBe('ended');
+    const b = join('bob');
+    expect(sent(b, 'snapshot')).toHaveLength(0);
+    expect(sent(b, 'start')).toHaveLength(0);
+    expect(sent(b, 'lobby').length).toBeGreaterThan(0);
+  });
+
   it('restart is authority-owned: all players ready again => fresh match with a new seed', () => {
     const { room, join, sent } = harness();
     const a = join('ana');

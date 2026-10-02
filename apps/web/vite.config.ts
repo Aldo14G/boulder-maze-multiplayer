@@ -1,7 +1,10 @@
 import { fileURLToPath } from 'node:url';
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
+  test: {
+    include: ['test/**/*.test.ts'], // e2e/ belongs to Playwright
+  },
   resolve: {
     alias: {
       // Consume the core TypeScript source directly for dev/HMR. The package's
