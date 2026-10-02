@@ -10,10 +10,21 @@ export interface HudCallbacks {
   onPauseButton: () => void;
 }
 
+/** Seat colours by sorted player index; mirrors MazeScene.PLAYER_COLORS. */
+const SEAT_VARS = ['--seat-1', '--seat-2', '--seat-3', '--seat-4'];
+
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`missing #${id}`);
   return node as T;
+}
+
+function seatDot(index: number): HTMLSpanElement {
+  const dot = document.createElement('span');
+  dot.className = 'seat-dot';
+  dot.style.setProperty('--seat', `var(${SEAT_VARS[index % SEAT_VARS.length]})`);
+  dot.setAttribute('aria-hidden', 'true');
+  return dot;
 }
 
 /**
@@ -21,11 +32,14 @@ function el<T extends HTMLElement>(id: string): T {
  * port can reuse the DOM layer unchanged.
  */
 export class Hud {
-  private readonly hudTop = el<HTMLDivElement>('hud-top');
+  private readonly hudTop = el<HTMLElement>('hud-top');
   private readonly scoreEl = el<HTMLSpanElement>('hud-score');
+  private readonly teamWrap = el<HTMLDivElement>('hud-team-wrap');
+  private readonly teamEl = el<HTMLSpanElement>('hud-team');
   private readonly pelletsEl = el<HTMLSpanElement>('hud-pellets');
-  private readonly drill = el<HTMLSpanElement>('hud-drill');
+  private readonly drill = el<HTMLDivElement>('hud-drill');
   private readonly drillFill = el<HTMLSpanElement>('hud-drill-fill');
+  private readonly seatsEl = el<HTMLUListElement>('hud-seats');
   private readonly pauseBtn = el<HTMLButtonElement>('btn-pause');
   private readonly readyEl = el<HTMLDivElement>('ready-text');
   private readonly netEl = el<HTMLDivElement>('hud-net');
@@ -33,11 +47,16 @@ export class Hud {
   private readonly overlayTitle = el<HTMLHeadingElement>('overlay-title');
   private readonly overlayBody = el<HTMLParagraphElement>('overlay-body');
   private readonly overlayControls = el<HTMLUListElement>('overlay-controls');
+  private readonly controlNet = el<HTMLLIElement>('control-net');
+  private readonly roster = el<HTMLUListElement>('lobby-roster');
+  private readonly invite = el<HTMLParagraphElement>('lobby-invite');
   private readonly primaryBtn = el<HTMLButtonElement>('btn-primary');
   private readonly secondaryBtn = el<HTMLButtonElement>('btn-secondary');
 
   private overlayMode: OverlayMode | null = 'title';
   private ended = false;
+  private names = new Map<string, string>();
+  private seatsKey = '';
 
   constructor(cb: HudCallbacks) {
     this.primaryBtn.addEventListener('click', cb.onPrimary);
@@ -47,11 +66,15 @@ export class Hud {
   }
 
   update(snap: GameState, paused: boolean, localPlayerId: string | null): void {
+    const ids = Object.keys(snap.players).sort();
     const player = snap.players[localPlayerId ?? ''];
-    const team = Object.values(snap.players).reduce((sum, p) => sum + p.score, 0);
-    const solo = Object.keys(snap.players).length <= 1;
-    this.scoreEl.textContent = solo ? `Score ${player?.score ?? 0}` : `Score ${player?.score ?? 0} · Team ${team}`;
-    this.pelletsEl.textContent = `Pellets ${snap.pelletsRemaining}`;
+    const team = ids.reduce((sum, id) => sum + snap.players[id]!.score, 0);
+    const multi = ids.length > 1;
+    this.scoreEl.textContent = String(player?.score ?? 0);
+    this.teamWrap.hidden = !multi;
+    this.teamEl.textContent = String(team);
+    this.pelletsEl.textContent = String(snap.pelletsRemaining);
+    this.renderSeats(snap, ids, localPlayerId);
 
     const power = player?.powerTicks ?? 0;
     if (power > 0) {
@@ -66,10 +89,10 @@ export class Hud {
     if (snap.phase === 'ready') {
       const secsLeft = Math.ceil(Math.max(0, snap.readyUntilTick - snap.tick) / snap.config.tickRate);
       this.readyEl.hidden = false;
-      this.readyEl.textContent = secsLeft > 0 ? `READY — ${secsLeft}` : 'READY';
+      this.readyEl.textContent = secsLeft > 0 ? `Ready ${secsLeft}` : 'Go';
     } else if (snap.phase === 'playing' && player && !player.alive) {
       this.readyEl.hidden = false;
-      this.readyEl.textContent = 'SPECTATING';
+      this.readyEl.textContent = 'Spectating';
     } else {
       this.readyEl.hidden = true;
     }
@@ -86,11 +109,36 @@ export class Hud {
     if (paused && this.overlayMode === null) this.showOverlay('paused');
   }
 
+  /** Rebuilds the seat strip only when something visible changed. */
+  private renderSeats(snap: GameState, ids: string[], me: string | null): void {
+    if (ids.length <= 1) {
+      this.seatsEl.hidden = true;
+      return;
+    }
+    this.seatsEl.hidden = false;
+    const key = ids.map((id) => `${id}:${snap.players[id]!.score}:${snap.players[id]!.alive ? 1 : 0}:${snap.players[id]!.powerTicks > 0 ? 1 : 0}`).join('|');
+    if (key === this.seatsKey) return;
+    this.seatsKey = key;
+    this.seatsEl.replaceChildren(
+      ...ids.map((id, i) => {
+        const p = snap.players[id]!;
+        const li = document.createElement('li');
+        li.className = `hud-seat${id === me ? ' me' : ''}${p.alive ? '' : ' out'}`;
+        li.append(seatDot(i), `${this.names.get(id) ?? id} ${p.score}${p.powerTicks > 0 ? ' ⚡' : ''}`);
+        return li;
+      }),
+    );
+  }
+
   showOverlay(mode: OverlayMode, snap?: GameState, localPlayerId: string | null = null): void {
     this.overlayMode = mode;
     this.overlay.hidden = false;
+    this.roster.hidden = true;
+    this.invite.hidden = true;
+    this.overlayBody.hidden = false;
     const score = snap ? snap.players[localPlayerId ?? '']?.score ?? 0 : 0;
     const multi = snap ? Object.keys(snap.players).length > 1 : false;
+    const team = snap ? Object.values(snap.players).reduce((s, p) => s + p.score, 0) : 0;
     const again = multi ? 'Ready for next match' : undefined;
     switch (mode) {
       case 'title':
@@ -126,15 +174,16 @@ export class Hud {
         break;
       case 'won':
         this.overlayTitle.textContent = 'Maze Cleared';
-        this.overlayBody.textContent = `Final score: ${score}.`;
+        this.overlayBody.textContent = multi ? `Team score ${team} — you scored ${score}.` : `Final score: ${score}.`;
         this.overlayControls.hidden = true;
         this.primaryBtn.textContent = again ?? 'Play again';
         this.secondaryBtn.hidden = true;
         break;
       case 'lost':
         this.overlayTitle.textContent = multi ? 'Team Wiped' : 'Run Ended';
-        this.overlayBody.textContent =
-          `Score: ${score} — ${snap?.pelletsRemaining ?? 0} pellets left.`;
+        this.overlayBody.textContent = multi
+          ? `Team score ${team} — ${snap?.pelletsRemaining ?? 0} pellets left.`
+          : `Score: ${score} — ${snap?.pelletsRemaining ?? 0} pellets left.`;
         this.overlayControls.hidden = true;
         this.primaryBtn.textContent = again ?? 'Try again';
         this.secondaryBtn.hidden = true;
@@ -144,13 +193,29 @@ export class Hud {
   }
 
   /** Lobby roster; call after showOverlay('lobby') and on every roster change. */
-  setLobby(players: LobbyPlayer[], me: string | null, status: string): void {
-    const roster = players
-      .map((p) => `${p.id === me ? '▶ ' : ''}${p.name}${p.connected ? '' : ' (left)'} — ${p.ready ? 'ready' : 'waiting'}`)
-      .join('\n');
-    this.overlayBody.textContent = roster ? `${status}\n${roster}` : status;
-    this.overlayBody.style.whiteSpace = 'pre-line';
-    const mine = players.find((p) => p.id === me);
+  setLobby(players: LobbyPlayer[], me: string | null, status: string, inviteUrl?: string): void {
+    for (const p of players) this.names.set(p.id, p.name);
+    this.overlayBody.textContent = status;
+    const sorted = [...players].sort((a, b) => a.id.localeCompare(b.id));
+    this.roster.hidden = sorted.length === 0;
+    this.roster.replaceChildren(
+      ...sorted.map((p, i) => {
+        const li = document.createElement('li');
+        li.className = `lobby-row${p.id === me ? ' me' : ''}${p.connected ? '' : ' left'}`;
+        const name = document.createElement('span');
+        name.textContent = p.id === me ? `${p.name} (you)` : p.name;
+        const badge = document.createElement('span');
+        badge.className = `px-badge ${p.ready ? 'px-badge--success' : 'px-badge--outline'}`;
+        badge.textContent = !p.connected ? 'left' : p.ready ? 'ready' : 'waiting';
+        li.append(seatDot(i), name, badge);
+        return li;
+      }),
+    );
+    if (inviteUrl) {
+      this.invite.hidden = false;
+      this.invite.replaceChildren('Friends join at', Object.assign(document.createElement('code'), { textContent: inviteUrl }));
+    }
+    const mine = sorted.find((p) => p.id === me);
     this.primaryBtn.textContent = mine?.ready ? 'Not ready' : 'Ready';
   }
 
@@ -160,6 +225,7 @@ export class Hud {
 
   setPauseAvailable(available: boolean): void {
     this.pauseBtn.hidden = !available;
+    this.controlNet.hidden = available;
   }
 
   /** Netgraph; pass null to hide. */
@@ -169,11 +235,16 @@ export class Hud {
     this.netEl.replaceChildren();
     const mode = document.createElement('span');
     mode.className = stats.prediction ? 'on' : 'off';
-    mode.textContent = `prediction ${stats.prediction ? 'ON ' : 'OFF'} [N]`;
+    mode.textContent = `predict ${stats.prediction ? 'ON ' : 'OFF'} [N]`;
+    const row = (label: string, value: string) => `\n${label.padEnd(7)}${value.padStart(8)}`;
     this.netEl.append(
       mode,
-      `\nrtt ${String(stats.rttMs).padStart(4)} ms   lead ${String(stats.leadTicks).padStart(2)}t  ahead ${String(stats.aheadTicks).padStart(3)}t`,
-      `\nsnap ${String(stats.snapshotsPerSecond).padStart(3)}/s  ${String(stats.kbPerSecond).padStart(4)} KB/s  fix ${String(stats.lastCorrectionUnits).padStart(3)}u  resync ${stats.resyncs}`,
+      row('rtt', `${stats.rttMs} ms`),
+      row('lead', `${stats.leadTicks}t +${stats.aheadTicks}t`),
+      row('snaps', `${stats.snapshotsPerSecond}/s`),
+      row('net', `${stats.kbPerSecond} KB/s`),
+      row('fix', `${stats.lastCorrectionUnits}u`),
+      row('resync', String(stats.resyncs)),
     );
   }
 

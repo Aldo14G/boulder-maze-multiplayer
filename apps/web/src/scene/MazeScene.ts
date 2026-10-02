@@ -128,16 +128,16 @@ export class MazeScene extends Phaser.Scene {
 
   private drawStatic(map: MazeMap): void {
     const g = this.add.graphics();
-    g.fillStyle(0x14161c, 1);
+    g.fillStyle(0x171c48, 1);
     g.fillRect(0, 0, this.scale.width, this.scale.height);
 
     for (const t of allWalkableTiles(map)) {
-      g.fillStyle(0x242b3a, 1);
+      g.fillStyle(0x212a6b, 1);
       g.fillRect(this.tileX(t.x), this.tileY(t.y), TILE_PX, TILE_PX);
     }
 
     // wall outlines: stroke each walkable/non-walkable shared edge once
-    g.lineStyle(3, 0x5f729b, 1);
+    g.lineStyle(3, 0x9aa3e0, 1);
     for (const t of allWalkableTiles(map)) {
       for (const v of Object.values(DIR_VECTORS)) {
         const n = { x: t.x + v.x, y: t.y + v.y };
@@ -154,16 +154,16 @@ export class MazeScene extends Phaser.Scene {
     // chute tubes + entry markers
     for (const chute of map.chutes) {
       const tube = this.tubeRect(chute.entry, chute.inward, map);
-      g.fillStyle(0x1b2130, 1);
+      g.fillStyle(0x1d2558, 1);
       g.fillRoundedRect(tube.x, tube.y, tube.w, tube.h, 6);
-      g.lineStyle(2, 0x5f729b, 1);
+      g.lineStyle(2, 0x9aa3e0, 1);
       g.strokeRoundedRect(tube.x, tube.y, tube.w, tube.h, 6);
       const midY = tube.y + tube.h / 2;
-      g.lineStyle(1, 0x39415a, 1);
+      g.lineStyle(1, 0x2b3585, 1);
       g.lineBetween(tube.x, midY, tube.x + tube.w, midY);
       // entry hatch on the maze side
       const ex = chute.inward === 'right' ? this.tileX(0) : this.tileX(map.width - 1);
-      g.lineStyle(3, 0x8b93a7, 1);
+      g.lineStyle(3, 0xffffff, 1);
       g.lineBetween(ex, this.tileY(chute.entry.y) + 4, ex, this.tileY(chute.entry.y) + TILE_PX - 4);
     }
   }
@@ -239,17 +239,17 @@ export class MazeScene extends Phaser.Scene {
       }
       g.fillStyle(color, 1);
       g.fillPoints(pts, true);
-      g.lineStyle(powered ? 3 : 2, powered ? 0xffffff : 0x10131a, 1);
+      g.lineStyle(powered ? 3 : 2, powered ? 0xffffff : 0x0a0d29, 1);
       g.strokePoints(pts, true);
       // facet: inner octagon
       const inner = pts.map((pt) => ({ x: p.x + (pt.x - p.x) * 0.55, y: p.y + (pt.y - p.y) * 0.55 }));
-      g.lineStyle(1.5, 0x10131a, 0.7);
+      g.lineStyle(1.5, 0x0a0d29, 0.7);
       g.strokePoints(inner, true);
       // per-boulder marking
-      g.lineStyle(2.5, 0x10131a, 0.9);
+      g.lineStyle(2.5, 0x0a0d29, 0.9);
       switch (i % 4) {
         case 0:
-          g.fillStyle(0x10131a, 0.9);
+          g.fillStyle(0x0a0d29, 0.9);
           g.fillCircle(p.x, p.y, r * 0.16);
           break;
         case 1:
@@ -334,7 +334,7 @@ export class MazeScene extends Phaser.Scene {
       g.arc(pos.x, pos.y, TILE_PX * 0.62, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2, false);
       g.strokePath();
     } else {
-      g.lineStyle(2, 0x14161c, 1);
+      g.lineStyle(2, 0x171c48, 1);
       g.strokeTriangleShape(tri);
     }
   }
