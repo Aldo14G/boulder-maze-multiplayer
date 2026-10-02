@@ -62,9 +62,9 @@ rejection by assigning `tick = state.tick + 1` to the next pending intent.
    snapshot on request, RTT/tick-drift HUD, reconnect flow.
 6. **Retro-pixel UI** — lobby, HUD, spectator banner, player colours;
    `impeccable` review pass.
-7. **Hardening** — Playwright e2e with two browser contexts, `fast-check`
-   property tests for serialization round-trip and determinism under random
-   command streams, docs update.
+7. **Hardening** — Playwright e2e with two browser contexts against a real
+   server, property-style determinism tests (seeded RNG input streams
+   replayed identically; `test/determinism.test.ts`), docs update.
 
 ## First milestone (slice 1 + 2 + 3)
 
