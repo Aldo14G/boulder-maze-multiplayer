@@ -27,6 +27,8 @@ import type {
 export interface GameSession {
   /** Latest movement intent for the controlled player. */
   submitDirection(direction: Direction): void;
+  /** Called once per render frame; local sessions step the sim here. */
+  advance(frameDeltaMs: number): void;
   /** Detached, JSON-safe copy of the authoritative state for rendering. */
   snapshot(): GameState;
   /** Events produced since the previous drain (for FX; never for gameplay). */
@@ -34,8 +36,11 @@ export interface GameSession {
   pause(): void;
   resume(): void;
   restart(): void;
+  onFocusLost(): void;
   readonly paused: boolean;
   readonly phase: GameState['phase'];
+  /** The player this session steers; null until a remote authority assigns one. */
+  readonly localPlayerId: string | null;
 }
 
 const TICK_MS = 1000 / DEFAULT_CONFIG.tickRate;
@@ -56,6 +61,7 @@ export class LocalGameSession implements GameSession {
   private eventBacklog: GameEvent[] = [];
   // Frozen until the first Start so the run cannot play out under the title overlay.
   private _paused = true;
+  readonly localPlayerId = LOCAL_PLAYER_ID;
 
   constructor(
     private readonly config: GameConfig = DEFAULT_CONFIG,

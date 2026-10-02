@@ -10,6 +10,10 @@ export default defineConfig({
       '@boulder-maze/core': fileURLToPath(
         new URL('../../packages/core/src/index.ts', import.meta.url),
       ),
+      // Wire protocol only — never the server entry, which imports `ws`.
+      '@boulder-maze/server/protocol': fileURLToPath(
+        new URL('../../apps/server/src/protocol.ts', import.meta.url),
+      ),
     },
   },
   build: {

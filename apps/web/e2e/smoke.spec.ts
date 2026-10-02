@@ -48,13 +48,14 @@ test('arrow keys steer the player', async ({ page }) => {
     () => (window as never as { __BOULDER__: { snapshot(): { phase: string } } }).__BOULDER__.snapshot().phase === 'playing',
   );
   const before = await snap(page);
-  await page.keyboard.down('ArrowUp');
+  // the bottom corridor is open on both sides of every spawn
+  await page.keyboard.down('ArrowLeft');
   await page.waitForTimeout(600);
-  await page.keyboard.up('ArrowUp');
+  await page.keyboard.up('ArrowLeft');
   const after = await snap(page);
   const p0 = before.players[Object.keys(before.players)[0]!]!;
   const p1 = after.players[Object.keys(after.players)[0]!]!;
-  expect(p1.pos.y).toBeLessThan(p0.pos.y);
+  expect(p1.pos.x).toBeLessThan(p0.pos.x);
 });
 
 test('P pauses and resumes the simulation', async ({ page }) => {
